@@ -12,6 +12,8 @@ Supported agents:
 - Cline / Roo Cline
 - Zed
 
+Named key detectors include OpenAI/OpenRouter, Anthropic, GitHub, Google/Gemini, Slack, Square, Shopify, Stripe, Linear, AWS, JWT, Hugging Face, npm, PyPI, and private-key blocks, plus label-based generic token/secret detection.
+
 By default, keyleaks scans both user prompts and assistant responses. Key values are redacted unless `--show-values` is passed.
 
 ## Install

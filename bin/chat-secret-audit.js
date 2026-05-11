@@ -4,13 +4,15 @@ import { ALL_AGENT_KEYS, DEFAULT_ROLES, TOOL_LABELS, buildReport } from '../lib/
 const toolLabels = TOOL_LABELS;
 const agentKeys = Object.fromEntries(Object.entries(toolLabels).map(([key, label]) => [label, key]));
 const agentList = Object.values(toolLabels).join('|');
+const RULE = '─'.repeat(72);
+const BAR_WIDTH = 34;
 
 function printHelp() {
   console.log(`keyleaks
 
 Usage:
-  keyleaks                         Compact summary list
-  keyleaks summary                 Compact summary list
+  keyleaks                         Structured summary + per-agent charts
+  keyleaks summary                 Structured summary + per-agent charts
   keyleaks details                 Detail table with redacted values
   keyleaks details --show-values   Detail table with raw key values
   keyleaks types                   Counts by inferred key type
@@ -37,13 +39,9 @@ function reportKeys(report) {
 }
 
 function printList(report) {
-  const sections = reportKeys(report);
-  const blocks = sections.map((key) => {
-    const data = report[key];
-    return `${toolLabels[key]}:\nmessages: ${data.messages_with_credentials}\ncredential occurrences: ${data.credential_occurrences}\ndistinct occurrences: ${data.distinct_credential_values}`;
-  });
-  console.log(blocks.join('\n\n'));
-  printMonthlyGraph(report);
+  printHeader(report);
+  printSummaryTable(report);
+  printAgentMonthlyGraphs(report);
 }
 
 function detailRows(report) {
@@ -82,42 +80,94 @@ function applyFilters(rows, args) {
 function table(rows, columns) {
   const widths = columns.map((col) => Math.max(col.header.length, ...rows.map((row) => String(row[col.key] ?? '').length)));
   const line = columns.map((col, i) => col.header.padEnd(widths[i])).join('  ');
-  const divider = widths.map((width) => '-'.repeat(width)).join('  ');
+  const divider = widths.map((width) => '─'.repeat(width)).join('  ');
   const body = rows.map((row) => columns.map((col, i) => String(row[col.key] ?? '').padEnd(widths[i])).join('  '));
   return [line, divider, ...body].join('\n');
 }
 
-function printMonthlyGraph(report) {
-  const rows = report.monthly_breakdown || [];
-  if (!rows.length) return;
-  const graphRows = rows.map((row) => {
+function printHeader(report) {
+  console.log(RULE);
+  console.log('KEYLEAKS — Credential Leak Report');
+  console.log(RULE);
+  console.log(`Generated: ${report.generated_at}`);
+  console.log(`Roles:     ${(report.roles_scanned || DEFAULT_ROLES).join(' + ')}`);
+}
+
+function printSummaryTable(report) {
+  const rows = reportKeys(report).map((key) => {
+    const data = report[key];
+    return {
+      Agent: toolLabels[key],
+      Messages: data.messages_with_credentials,
+      Occurrences: data.credential_occurrences,
+      Distinct: data.distinct_credential_values,
+      User: data.credential_occurrences_by_role?.user || 0,
+      Assistant: data.credential_occurrences_by_role?.assistant || 0,
+    };
+  });
+  console.log('\n🔐 SUMMARY');
+  console.log(RULE);
+  console.log(table(rows, [
+    { key: 'Agent', header: 'Agent' },
+    { key: 'Messages', header: 'Messages' },
+    { key: 'Occurrences', header: 'Occurrences' },
+    { key: 'Distinct', header: 'Distinct' },
+    { key: 'User', header: 'User' },
+    { key: 'Assistant', header: 'Assistant' },
+  ]));
+}
+
+function stackedBar(user, assistant, maxTotal) {
+  const total = user + assistant;
+  if (!total) return '·'.repeat(BAR_WIDTH);
+  const minWidth = (user > 0 ? 1 : 0) + (assistant > 0 ? 1 : 0);
+  const width = Math.max(minWidth, Math.round((total / maxTotal) * BAR_WIDTH));
+  let userWidth = Math.round((user / total) * width);
+  let assistantWidth = width - userWidth;
+  if (user > 0 && userWidth === 0) userWidth = 1;
+  if (assistant > 0 && assistantWidth === 0) assistantWidth = 1;
+  return `${'█'.repeat(userWidth)}${'░'.repeat(assistantWidth)}`.padEnd(BAR_WIDTH, '·');
+}
+
+function monthlyRowsFor(data) {
+  return (data.monthly_breakdown || []).map((row) => {
     const user = row.credential_occurrences?.user || 0;
     const assistant = row.credential_occurrences?.assistant || 0;
     return { month: row.month, user, assistant, total: user + assistant };
   }).filter((row) => row.total > 0);
-  if (!graphRows.length) return;
-  const max = Math.max(...graphRows.map((row) => row.total));
-  const width = 32;
-  const rendered = graphRows.map((row) => {
-    const barWidth = Math.max(1, Math.round((row.total / max) * width));
-    const userWidth = row.total ? Math.round((row.user / row.total) * barWidth) : 0;
-    const assistantWidth = Math.max(0, barWidth - userWidth);
-    return {
-      month: row.month,
-      user: row.user,
-      assistant: row.assistant,
-      total: row.total,
-      graph: `${'#'.repeat(userWidth)}${'='.repeat(assistantWidth)}`,
-    };
-  });
-  console.log('\nmonth-wise credential occurrences (# user, = assistant):');
-  console.log(table(rendered, [
-    { key: 'month', header: 'Month' },
-    { key: 'user', header: 'User' },
-    { key: 'assistant', header: 'Assistant' },
-    { key: 'total', header: 'Total' },
-    { key: 'graph', header: 'Graph' },
-  ]));
+}
+
+function printAgentMonthlyGraphs(report) {
+  console.log('\n📊 CREDENTIAL LEAKS BY MONTH');
+  console.log(RULE);
+  console.log('Legend: █ user  ░ assistant  · no scaled value');
+
+  for (const key of reportKeys(report)) {
+    const data = report[key];
+    const rows = monthlyRowsFor(data);
+    console.log(`\n${toolLabels[key].toUpperCase()}`);
+    console.log('─'.repeat(48));
+    console.log(`messages: ${data.messages_with_credentials}  |  occurrences: ${data.credential_occurrences}  |  distinct: ${data.distinct_credential_values}`);
+    if (!rows.length) {
+      console.log('(no credential leaks found)');
+      continue;
+    }
+    const maxTotal = Math.max(...rows.map((row) => row.total));
+    const rendered = rows.map((row) => ({
+      Month: row.month,
+      User: row.user,
+      Assistant: row.assistant,
+      Total: row.total,
+      Bar: stackedBar(row.user, row.assistant, maxTotal),
+    }));
+    console.log(table(rendered, [
+      { key: 'Month', header: 'Month' },
+      { key: 'User', header: 'User' },
+      { key: 'Assistant', header: 'Assistant' },
+      { key: 'Total', header: 'Total' },
+      { key: 'Bar', header: 'Bar' },
+    ]));
+  }
 }
 
 function printDetails(report, args) {

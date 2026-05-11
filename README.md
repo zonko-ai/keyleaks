@@ -98,7 +98,7 @@ keyleaks details --json --events
 - Native Node scanner; no Python process startup.
 - Uses `rg` when available to prefilter large JSONL histories.
 - Scans agents concurrently by default.
-- Includes a month-wise ASCII bar graph in summary output.
+- Includes clean per-agent month-wise bar charts in summary output.
 - Use `--agent <name>` for the fastest targeted scan.
 - Use `--role user` or `--role assistant` to scan one side only.
 - Use `--sequential` to disable concurrent scanning for debugging.

@@ -42,6 +42,7 @@ Usage:
   keyleaks details                 Detail table with redacted values
   keyleaks details --show-values   Detail table with raw key values
   keyleaks types                   Counts by inferred key type
+  keyleaks types --show-values     Group key types and include key values
   keyleaks --json                  Raw JSON summary
   keyleaks details --json          Raw JSON with credential_details
 
@@ -209,6 +210,7 @@ function printCommandHints() {
     { Command: 'keyleaks details', Purpose: 'Show the redacted key details table' },
     { Command: 'keyleaks details --show-values', Purpose: 'Show raw key values; use only in a private terminal' },
     { Command: 'keyleaks types', Purpose: 'Group key leaks by inferred key type' },
+    { Command: 'keyleaks types --show-values', Purpose: 'Group key types and include key values' },
     { Command: 'keyleaks --agent codex', Purpose: 'Scan one agent faster' },
   ], [
     { key: 'Command', header: 'Command' },
@@ -237,26 +239,39 @@ function printDetails(report, args) {
   ]));
 }
 
+function oneLineValue(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
 function printTypes(report, args) {
   const rows = applyFilters(detailRows(report), args);
-  const counts = new Map();
+  const includeValues = args.includes('--show-values');
+  const groups = new Map();
   for (const row of rows) {
     const key = `${row.coding_agent}\t${row.key_type}`;
-    counts.set(key, (counts.get(key) || 0) + 1);
+    if (!groups.has(key)) groups.set(key, { count: 0, values: new Set() });
+    const group = groups.get(key);
+    group.count++;
+    if (includeValues) group.values.add(oneLineValue(row.key_value));
   }
-  const tableRows = [...counts.entries()].map(([key, count]) => {
+  const tableRows = [...groups.entries()].map(([key, group]) => {
     const [agent, key_type] = key.split('\t');
-    return { agent: blue(displayAgent(agent)), key_type, count };
-  }).sort((a, b) => a.agent.localeCompare(b.agent) || b.count - a.count || a.key_type.localeCompare(b.key_type));
+    const agentLabel = displayAgent(agent);
+    const row = { agent: blue(agentLabel), agent_sort: agentLabel, key_type, count: group.count };
+    if (includeValues) row.values = [...group.values].join(', ');
+    return row;
+  }).sort((a, b) => a.agent_sort.localeCompare(b.agent_sort) || b.count - a.count || a.key_type.localeCompare(b.key_type));
   if (!tableRows.length) {
     console.log('No matching key types found.');
     return;
   }
-  console.log(table(tableRows, [
+  const columns = [
     { key: 'agent', header: 'Coding Agent' },
     { key: 'key_type', header: 'Key Type' },
     { key: 'count', header: 'Count' },
-  ]));
+  ];
+  if (includeValues) columns.push({ key: 'values', header: 'Values' });
+  console.log(table(tableRows, columns));
 }
 
 const args = process.argv.slice(2);

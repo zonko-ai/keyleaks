@@ -28,6 +28,7 @@ After installation, run:
 keyleaks
 keyleaks details
 keyleaks types
+keyleaks types --show-values
 keyleaks --agent codex
 ```
 
@@ -80,6 +81,7 @@ keyleaks details --show-values
 
 ```bash
 keyleaks types
+keyleaks types --show-values
 keyleaks types --agent opencode
 ```
 

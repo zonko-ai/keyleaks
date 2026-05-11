@@ -4,6 +4,7 @@ const rows = [
   ['keyleaks', 'Show summary and per-agent monthly leak charts'],
   ['keyleaks details', 'Show the redacted key details table'],
   ['keyleaks types', 'Group key leaks by inferred key type'],
+  ['keyleaks types --show-values', 'Group key types and include key values'],
   ['keyleaks --agent codex', 'Scan one agent faster'],
 ];
 const widths = [

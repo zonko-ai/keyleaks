@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { ALL_AGENT_KEYS, TOOL_LABELS, buildReport } from '../lib/native-audit.js';
+import { ALL_AGENT_KEYS, DEFAULT_ROLES, TOOL_LABELS, buildReport } from '../lib/native-audit.js';
 
 const toolLabels = TOOL_LABELS;
 const agentKeys = Object.fromEntries(Object.entries(toolLabels).map(([key, label]) => [label, key]));
@@ -21,6 +21,7 @@ Options:
   --agent ${agentList}
                                   Scan/filter one agent only
   --type <text>                    Filter detail output by key type text
+  --role user|assistant|all        Scan one role or both roles; default: all
   --events                         Include redacted event metadata in JSON
   --inventory                      Include file inventory in JSON
   --show-values                    Show raw credential values in details
@@ -42,6 +43,7 @@ function printList(report) {
     return `${toolLabels[key]}:\nmessages: ${data.messages_with_credentials}\ncredential occurrences: ${data.credential_occurrences}\ndistinct occurrences: ${data.distinct_credential_values}`;
   });
   console.log(blocks.join('\n\n'));
+  printMonthlyGraph(report);
 }
 
 function detailRows(report) {
@@ -55,7 +57,7 @@ function parseFlagValue(args, name) {
 }
 
 function parseCommand(args) {
-  const valueFlags = new Set(['--agent', '--type']);
+  const valueFlags = new Set(['--agent', '--type', '--role']);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (valueFlags.has(arg)) {
@@ -85,9 +87,43 @@ function table(rows, columns) {
   return [line, divider, ...body].join('\n');
 }
 
+function printMonthlyGraph(report) {
+  const rows = report.monthly_breakdown || [];
+  if (!rows.length) return;
+  const graphRows = rows.map((row) => {
+    const user = row.credential_occurrences?.user || 0;
+    const assistant = row.credential_occurrences?.assistant || 0;
+    return { month: row.month, user, assistant, total: user + assistant };
+  }).filter((row) => row.total > 0);
+  if (!graphRows.length) return;
+  const max = Math.max(...graphRows.map((row) => row.total));
+  const width = 32;
+  const rendered = graphRows.map((row) => {
+    const barWidth = Math.max(1, Math.round((row.total / max) * width));
+    const userWidth = row.total ? Math.round((row.user / row.total) * barWidth) : 0;
+    const assistantWidth = Math.max(0, barWidth - userWidth);
+    return {
+      month: row.month,
+      user: row.user,
+      assistant: row.assistant,
+      total: row.total,
+      graph: `${'#'.repeat(userWidth)}${'='.repeat(assistantWidth)}`,
+    };
+  });
+  console.log('\nmonth-wise credential occurrences (# user, = assistant):');
+  console.log(table(rendered, [
+    { key: 'month', header: 'Month' },
+    { key: 'user', header: 'User' },
+    { key: 'assistant', header: 'Assistant' },
+    { key: 'total', header: 'Total' },
+    { key: 'graph', header: 'Graph' },
+  ]));
+}
+
 function printDetails(report, args) {
   const rows = applyFilters(detailRows(report), args).map((row) => ({
     agent: row.coding_agent,
+    role: row.role,
     date: row.date || 'unknown',
     key_type: row.key_type,
     key_value: row.key_value,
@@ -98,6 +134,7 @@ function printDetails(report, args) {
   }
   console.log(table(rows, [
     { key: 'agent', header: 'Coding Agent' },
+    { key: 'role', header: 'Role' },
     { key: 'date', header: 'Date' },
     { key: 'key_type', header: 'Key Type' },
     { key: 'key_value', header: 'Key Value' },
@@ -139,6 +176,7 @@ const json = args.includes('--json');
 const showValues = args.includes('--show-values');
 const parallel = !args.includes('--sequential');
 const needsDetails = ['details', 'types'].includes(command);
+const requestedRole = parseFlagValue(args, '--role') || 'all';
 
 if (!['summary', 'list', 'details', 'types'].includes(command)) {
   console.error(`Unknown command: ${command}`);
@@ -151,7 +189,12 @@ if (agent && !agentKeys[agent]) {
   console.error(`Unknown agent: ${agent}. Expected one of: ${Object.values(toolLabels).join(', ')}.`);
   process.exit(2);
 }
+if (!['all', ...DEFAULT_ROLES].includes(requestedRole)) {
+  console.error(`Unknown role: ${requestedRole}. Expected user, assistant, or all.`);
+  process.exit(2);
+}
 const agents = agent ? [agentKeys[agent]] : ALL_AGENT_KEYS;
+const roles = requestedRole === 'all' ? DEFAULT_ROLES : [requestedRole];
 
 const report = await buildReport({
   includeEvents: events,
@@ -160,6 +203,7 @@ const report = await buildReport({
   showValues,
   parallel,
   agents,
+  roles,
 });
 
 if (json) {

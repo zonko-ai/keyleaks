@@ -12,7 +12,7 @@ Supported agents:
 - Cline / Roo Cline
 - Zed
 
-By default, key values are redacted. Use `--show-values` only when your terminal output is private.
+By default, keyleaks scans both user prompts and assistant responses. Key values are redacted unless `--show-values` is passed.
 
 ## Install / run
 
@@ -37,6 +37,8 @@ keyleaks
 keyleaks summary
 keyleaks list
 keyleaks --agent codex
+keyleaks --role user
+keyleaks --role assistant
 ```
 
 Example:
@@ -60,7 +62,7 @@ distinct occurrences: 24
 
 ### Details
 
-Shows Coding Agent, Date, inferred Key Type, and Key Value. Values are redacted by default.
+Shows Coding Agent, Role, Date, inferred Key Type, and Key Value. Values are redacted by default.
 
 ```bash
 keyleaks details
@@ -96,7 +98,9 @@ keyleaks details --json --events
 - Native Node scanner; no Python process startup.
 - Uses `rg` when available to prefilter large JSONL histories.
 - Scans agents concurrently by default.
+- Includes a month-wise ASCII bar graph in summary output.
 - Use `--agent <name>` for the fastest targeted scan.
+- Use `--role user` or `--role assistant` to scan one side only.
 - Use `--sequential` to disable concurrent scanning for debugging.
 
 ## Safety

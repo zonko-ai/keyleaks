@@ -2,10 +2,36 @@
 import { ALL_AGENT_KEYS, DEFAULT_ROLES, TOOL_LABELS, buildReport } from '../lib/native-audit.js';
 
 const toolLabels = TOOL_LABELS;
+const displayLabels = {
+  pi_agent: 'Pi',
+  claude_code: 'Claude',
+  codex: 'Codex',
+  amp: 'Amp',
+  opencode: 'OpenCode',
+  cline: 'Cline',
+  zed: 'Zed',
+};
 const agentKeys = Object.fromEntries(Object.entries(toolLabels).map(([key, label]) => [label, key]));
 const agentList = Object.values(toolLabels).join('|');
 const RULE = '─'.repeat(72);
 const BAR_WIDTH = 34;
+const USE_COLOR = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && process.env.TERM !== 'dumb';
+const BLUE = USE_COLOR ? '\x1b[34m' : '';
+const RESET = USE_COLOR ? '\x1b[0m' : '';
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+function blue(value) {
+  return `${BLUE}${value}${RESET}`;
+}
+
+function visibleLength(value) {
+  return String(value ?? '').replace(ANSI_RE, '').length;
+}
+
+function padVisible(value, width) {
+  const text = String(value ?? '');
+  return text + ' '.repeat(Math.max(0, width - visibleLength(text)));
+}
 
 function printHelp() {
   console.log(`keyleaks
@@ -38,10 +64,16 @@ function reportKeys(report) {
   return ALL_AGENT_KEYS.filter((key) => report[key]);
 }
 
+function displayAgent(agentLabel) {
+  const key = agentKeys[agentLabel];
+  return displayLabels[key] || agentLabel;
+}
+
 function printList(report) {
   printHeader(report);
   printSummaryTable(report);
   printAgentMonthlyGraphs(report);
+  printCommandHints();
 }
 
 function detailRows(report) {
@@ -78,55 +110,59 @@ function applyFilters(rows, args) {
 }
 
 function table(rows, columns) {
-  const widths = columns.map((col) => Math.max(col.header.length, ...rows.map((row) => String(row[col.key] ?? '').length)));
-  const line = columns.map((col, i) => col.header.padEnd(widths[i])).join('  ');
+  const widths = columns.map((col) => Math.max(visibleLength(col.header), ...rows.map((row) => visibleLength(row[col.key]))));
+  const line = columns.map((col, i) => padVisible(col.header, widths[i])).join('  ');
   const divider = widths.map((width) => '─'.repeat(width)).join('  ');
-  const body = rows.map((row) => columns.map((col, i) => String(row[col.key] ?? '').padEnd(widths[i])).join('  '));
+  const body = rows.map((row) => columns.map((col, i) => padVisible(row[col.key], widths[i])).join('  '));
   return [line, divider, ...body].join('\n');
 }
 
-function printHeader(report) {
+function printHeader() {
   console.log(RULE);
   console.log('KEYLEAKS — Credential Leak Report');
   console.log(RULE);
-  console.log(`Generated: ${report.generated_at}`);
-  console.log(`Roles:     ${(report.roles_scanned || DEFAULT_ROLES).join(' + ')}`);
+}
+
+function activeReportKeys(report) {
+  return reportKeys(report).filter((key) => (report[key]?.messages_with_credentials || 0) > 0);
 }
 
 function printSummaryTable(report) {
-  const rows = reportKeys(report).map((key) => {
+  const rows = activeReportKeys(report).map((key) => {
     const data = report[key];
     return {
-      Agent: toolLabels[key],
+      Agent: blue(displayLabels[key] || toolLabels[key]),
       Messages: data.messages_with_credentials,
-      Occurrences: data.credential_occurrences,
-      Distinct: data.distinct_credential_values,
-      User: data.credential_occurrences_by_role?.user || 0,
-      Assistant: data.credential_occurrences_by_role?.assistant || 0,
+      'Key Leaks': data.credential_occurrences,
+      'Distinct Leaks': data.distinct_credential_values,
     };
   });
+  if (!rows.length) {
+    console.log('\n🔐 SUMMARY');
+    console.log(RULE);
+    console.log('(no credential leaks found)');
+    return;
+  }
   console.log('\n🔐 SUMMARY');
   console.log(RULE);
   console.log(table(rows, [
     { key: 'Agent', header: 'Agent' },
     { key: 'Messages', header: 'Messages' },
-    { key: 'Occurrences', header: 'Occurrences' },
-    { key: 'Distinct', header: 'Distinct' },
-    { key: 'User', header: 'User' },
-    { key: 'Assistant', header: 'Assistant' },
+    { key: 'Key Leaks', header: 'Key Leaks' },
+    { key: 'Distinct Leaks', header: 'Distinct Leaks' },
   ]));
 }
 
 function stackedBar(user, assistant, maxTotal) {
   const total = user + assistant;
-  if (!total) return '·'.repeat(BAR_WIDTH);
+  if (!total) return ' '.repeat(BAR_WIDTH);
   const minWidth = (user > 0 ? 1 : 0) + (assistant > 0 ? 1 : 0);
   const width = Math.max(minWidth, Math.round((total / maxTotal) * BAR_WIDTH));
   let userWidth = Math.round((user / total) * width);
   let assistantWidth = width - userWidth;
   if (user > 0 && userWidth === 0) userWidth = 1;
   if (assistant > 0 && assistantWidth === 0) assistantWidth = 1;
-  return `${'█'.repeat(userWidth)}${'░'.repeat(assistantWidth)}`.padEnd(BAR_WIDTH, '·');
+  return `${'█'.repeat(userWidth)}${'░'.repeat(assistantWidth)}`.padEnd(BAR_WIDTH, ' ');
 }
 
 function monthlyRowsFor(data) {
@@ -140,18 +176,14 @@ function monthlyRowsFor(data) {
 function printAgentMonthlyGraphs(report) {
   console.log('\n📊 CREDENTIAL LEAKS BY MONTH');
   console.log(RULE);
-  console.log('Legend: █ user  ░ assistant  · no scaled value');
+  console.log('Legend: █ user  ░ assistant');
 
-  for (const key of reportKeys(report)) {
+  for (const key of activeReportKeys(report)) {
     const data = report[key];
     const rows = monthlyRowsFor(data);
-    console.log(`\n${toolLabels[key].toUpperCase()}`);
+    console.log(`\n${blue((displayLabels[key] || toolLabels[key]).toUpperCase())}`);
     console.log('─'.repeat(48));
-    console.log(`messages: ${data.messages_with_credentials}  |  occurrences: ${data.credential_occurrences}  |  distinct: ${data.distinct_credential_values}`);
-    if (!rows.length) {
-      console.log('(no credential leaks found)');
-      continue;
-    }
+    if (!rows.length) continue;
     const maxTotal = Math.max(...rows.map((row) => row.total));
     const rendered = rows.map((row) => ({
       Month: row.month,
@@ -170,9 +202,23 @@ function printAgentMonthlyGraphs(report) {
   }
 }
 
+function printCommandHints() {
+  console.log('\n▶ COMMANDS');
+  console.log(RULE);
+  console.log(table([
+    { Command: 'keyleaks details', Purpose: 'Show the redacted key details table' },
+    { Command: 'keyleaks details --show-values', Purpose: 'Show raw key values; use only in a private terminal' },
+    { Command: 'keyleaks types', Purpose: 'Group key leaks by inferred key type' },
+    { Command: 'keyleaks --agent codex', Purpose: 'Scan one agent faster' },
+  ], [
+    { key: 'Command', header: 'Command' },
+    { key: 'Purpose', header: 'Purpose' },
+  ]));
+}
+
 function printDetails(report, args) {
   const rows = applyFilters(detailRows(report), args).map((row) => ({
-    agent: row.coding_agent,
+    agent: blue(displayAgent(row.coding_agent)),
     role: row.role,
     date: row.date || 'unknown',
     key_type: row.key_type,
@@ -200,7 +246,7 @@ function printTypes(report, args) {
   }
   const tableRows = [...counts.entries()].map(([key, count]) => {
     const [agent, key_type] = key.split('\t');
-    return { agent, key_type, count };
+    return { agent: blue(displayAgent(agent)), key_type, count };
   }).sort((a, b) => a.agent.localeCompare(b.agent) || b.count - a.count || a.key_type.localeCompare(b.key_type));
   if (!tableRows.length) {
     console.log('No matching key types found.');

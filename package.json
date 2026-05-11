@@ -1,6 +1,6 @@
 {
   "name": "keyleaks",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "One-command local audit for credential-like values in coding-agent chat histories.",
   "license": "MIT",
   "type": "module",
@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "start": "node bin/chat-secret-audit.js",
-    "test": "node --check bin/chat-secret-audit.js && node --check lib/native-audit.js && node bin/chat-secret-audit.js --json >/tmp/keyleaks-test.json && python3 -m json.tool /tmp/keyleaks-test.json >/dev/null && node bin/chat-secret-audit.js details >/tmp/keyleaks-details.txt && grep -q 'Coding Agent' /tmp/keyleaks-details.txt && node bin/chat-secret-audit.js types >/tmp/keyleaks-types.txt && grep -q 'Key Type' /tmp/keyleaks-types.txt && node bin/chat-secret-audit.js --agent codex >/tmp/keyleaks-codex.txt && grep -q '^codex[[:space:]]' /tmp/keyleaks-codex.txt"
+    "postinstall": "node bin/postinstall.js",
+    "test": "node --check bin/chat-secret-audit.js && node --check bin/postinstall.js && node --check lib/native-audit.js && node bin/chat-secret-audit.js --json >/tmp/keyleaks-test.json && python3 -m json.tool /tmp/keyleaks-test.json >/dev/null && node bin/chat-secret-audit.js details >/tmp/keyleaks-details.txt && grep -q 'Coding Agent' /tmp/keyleaks-details.txt && node bin/chat-secret-audit.js types >/tmp/keyleaks-types.txt && grep -q 'Key Type' /tmp/keyleaks-types.txt && node bin/chat-secret-audit.js --agent codex >/tmp/keyleaks-codex.txt && grep -q '^Codex[[:space:]]' /tmp/keyleaks-codex.txt"
   },
   "engines": {
     "node": ">=18"

@@ -14,7 +14,22 @@ Supported agents:
 
 By default, keyleaks scans both user prompts and assistant responses. Key values are redacted unless `--show-values` is passed.
 
-## Install / run
+## Install
+
+```bash
+npm install -g keyleaks
+```
+
+After installation, run:
+
+```bash
+keyleaks
+keyleaks details
+keyleaks types
+keyleaks --agent codex
+```
+
+Without installing globally:
 
 ```bash
 npx keyleaks
@@ -30,7 +45,7 @@ keyleaks
 
 ## Commands
 
-### Summary
+### Summary and charts
 
 ```bash
 keyleaks
@@ -41,26 +56,9 @@ keyleaks --role user
 keyleaks --role assistant
 ```
 
-Example:
+The summary renders as tables and per-agent month-wise leak charts.
 
-```text
-pi:
-messages: 6
-credential occurrences: 14
-distinct occurrences: 14
-
-claude:
-messages: 72
-credential occurrences: 78
-distinct occurrences: 65
-
-codex:
-messages: 23
-credential occurrences: 30
-distinct occurrences: 24
-```
-
-### Details
+### Key details table
 
 Shows Coding Agent, Role, Date, inferred Key Type, and Key Value. Values are redacted by default.
 

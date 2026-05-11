@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ALL_AGENT_KEYS, DEFAULT_ROLES, TOOL_LABELS, buildReport } from '../lib/native-audit.js';
 
 const toolLabels = TOOL_LABELS;
@@ -40,9 +43,9 @@ Usage:
   keyleaks                         Structured summary + per-agent charts
   keyleaks summary                 Structured summary + per-agent charts
   keyleaks details                 Detail table with redacted values
-  keyleaks details --show-values   Detail table with raw key values
+  keyleaks details --show-values   Write raw key details JSON and print file link
   keyleaks types                   Counts by inferred key type
-  keyleaks types --show-values     Group key types and include key values
+  keyleaks types --show-values     Write grouped key values JSON and print file link
   keyleaks --json                  Raw JSON summary
   keyleaks details --json          Raw JSON with credential_details
 
@@ -53,7 +56,9 @@ Options:
   --role user|assistant|all        Scan one role or both roles; default: all
   --events                         Include redacted event metadata in JSON
   --inventory                      Include file inventory in JSON
-  --show-values                    Show raw credential values in details
+  --show-values                    Write raw credential values to a JSON file
+  --output <file>                  File path for --show-values JSON output
+                                  Refuses to overwrite existing files
   --sequential                     Disable default concurrent scanning
 
 Safety:
@@ -88,7 +93,7 @@ function parseFlagValue(args, name) {
 }
 
 function parseCommand(args) {
-  const valueFlags = new Set(['--agent', '--type', '--role']);
+  const valueFlags = new Set(['--agent', '--type', '--role', '--output']);
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (valueFlags.has(arg)) {
@@ -208,9 +213,9 @@ function printCommandHints() {
   console.log(RULE);
   console.log(table([
     { Command: 'keyleaks details', Purpose: 'Show the redacted key details table' },
-    { Command: 'keyleaks details --show-values', Purpose: 'Show raw key values; use only in a private terminal' },
+    { Command: 'keyleaks details --show-values', Purpose: 'Write raw key details JSON and print file link' },
     { Command: 'keyleaks types', Purpose: 'Group key leaks by inferred key type' },
-    { Command: 'keyleaks types --show-values', Purpose: 'Group key types and include key values' },
+    { Command: 'keyleaks types --show-values', Purpose: 'Write grouped key values JSON and print file link' },
     { Command: 'keyleaks --agent codex', Purpose: 'Scan one agent faster' },
   ], [
     { key: 'Command', header: 'Command' },
@@ -218,14 +223,22 @@ function printCommandHints() {
   ]));
 }
 
-function printDetails(report, args) {
-  const rows = applyFilters(detailRows(report), args).map((row) => ({
-    agent: blue(displayAgent(row.coding_agent)),
+function detailTableRows(report, args, { color = true } = {}) {
+  return applyFilters(detailRows(report), args).map((row) => ({
+    agent: color ? blue(displayAgent(row.coding_agent)) : displayAgent(row.coding_agent),
+    agent_id: row.coding_agent,
     role: row.role,
     date: row.date || 'unknown',
     key_type: row.key_type,
     key_value: row.key_value,
+    detector: row.detector,
+    source: row.source,
+    loc: row.loc,
   }));
+}
+
+function printDetails(report, args) {
+  const rows = detailTableRows(report, args);
   if (!rows.length) {
     console.log('No matching credential details found.');
     return;
@@ -243,9 +256,8 @@ function oneLineValue(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function printTypes(report, args) {
+function typeRows(report, args, { includeValues = false, color = true } = {}) {
   const rows = applyFilters(detailRows(report), args);
-  const includeValues = args.includes('--show-values');
   const groups = new Map();
   for (const row of rows) {
     const key = `${row.coding_agent}\t${row.key_type}`;
@@ -256,13 +268,21 @@ function printTypes(report, args) {
     if (row.role === 'assistant') group.assistant++;
     if (includeValues) group.values.add(oneLineValue(row.key_value));
   }
-  const tableRows = [...groups.entries()].map(([key, group]) => {
+  return [...groups.entries()].map(([key, group]) => {
     const [agent, key_type] = key.split('\t');
     const agentLabel = displayAgent(agent);
-    const row = { agent: blue(agentLabel), agent_sort: agentLabel, key_type, count: group.count, user: group.user, assistant: group.assistant };
-    if (includeValues) row.values = [...group.values].join(', ');
+    const row = { agent: color ? blue(agentLabel) : agentLabel, agent_id: agent, agent_sort: agentLabel, key_type, count: group.count, user: group.user, assistant: group.assistant };
+    if (includeValues) row.values = [...group.values];
     return row;
   }).sort((a, b) => a.agent_sort.localeCompare(b.agent_sort) || b.count - a.count || a.key_type.localeCompare(b.key_type));
+}
+
+function printTypes(report, args) {
+  const includeValues = args.includes('--show-values');
+  const tableRows = typeRows(report, args, { includeValues, color: true }).map((row) => ({
+    ...row,
+    values: includeValues ? row.values.join(', ') : undefined,
+  }));
   if (!tableRows.length) {
     console.log('No matching key types found.');
     return;
@@ -276,6 +296,60 @@ function printTypes(report, args) {
   ];
   if (includeValues) columns.push({ key: 'values', header: 'Values' });
   console.log(table(tableRows, columns));
+}
+
+function safeTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function defaultOutputPath(command) {
+  return resolve(process.cwd(), '.keyleaks', `keyleaks-${command}-${safeTimestamp()}.json`);
+}
+
+function prepareOutputDirectory(outputPath, { defaultLocation }) {
+  const dir = dirname(outputPath);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (defaultLocation) {
+    writeFileSync(resolve(dir, '.gitignore'), '*\n!.gitignore\n', { mode: 0o644 });
+  }
+}
+
+function showValuesPayload(command, report, args, filters) {
+  const base = {
+    generated_at: report.generated_at,
+    command,
+    filters,
+    warning: 'This file contains raw credential-like values. Treat it as sensitive.',
+  };
+  if (command === 'types') {
+    return { ...base, rows: typeRows(report, args, { includeValues: true, color: false }) };
+  }
+  if (command === 'details') {
+    return { ...base, rows: detailTableRows(report, args, { color: false }) };
+  }
+  return { ...base, report };
+}
+
+function writeShowValuesFile(command, report, args, filters) {
+  const requestedOutput = parseFlagValue(args, '--output');
+  const defaultLocation = !requestedOutput;
+  const outputPath = requestedOutput ? resolve(requestedOutput) : defaultOutputPath(command);
+  prepareOutputDirectory(outputPath, { defaultLocation });
+  const payload = JSON.stringify(showValuesPayload(command, report, args, filters), null, 2) + '\n';
+  try {
+    writeFileSync(outputPath, payload, { mode: 0o600, flag: 'wx' });
+    chmodSync(outputPath, 0o600);
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      console.error(`Refusing to overwrite existing file: ${outputPath}`);
+      console.error('Choose a new --output path or remove the existing file first.');
+      process.exit(1);
+    }
+    throw error;
+  }
+  console.log(`JSON written: ${outputPath}`);
+  console.log(`Open file:    ${pathToFileURL(outputPath).href}`);
+  console.log('Warning: this file contains raw credential-like values. Treat this file as sensitive and do not commit it.');
 }
 
 const args = process.argv.slice(2);
@@ -296,6 +370,12 @@ const requestedRole = parseFlagValue(args, '--role') || 'all';
 if (!['summary', 'list', 'details', 'types'].includes(command)) {
   console.error(`Unknown command: ${command}`);
   printHelp();
+  process.exit(2);
+}
+if (showValues && !needsDetails) {
+  console.error('--show-values is only supported with `details` or `types`.');
+  console.error('Try: keyleaks details --show-values');
+  console.error('Or:  keyleaks types --show-values');
   process.exit(2);
 }
 
@@ -320,8 +400,15 @@ const report = await buildReport({
   agents,
   roles,
 });
+const filters = {
+  agent: agent || 'all',
+  type: parseFlagValue(args, '--type') || 'all',
+  role: requestedRole,
+};
 
-if (json) {
+if (showValues) {
+  writeShowValuesFile(command, report, args, filters);
+} else if (json) {
   console.log(JSON.stringify(report, null, 2));
 } else if (command === 'details') {
   printDetails(report, args);

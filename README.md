@@ -14,7 +14,7 @@ Supported agents:
 
 Named key detectors include OpenAI/OpenRouter, Anthropic, GitHub, Google/Gemini, Slack, Square, Shopify, Stripe, Linear, AWS, JWT, Hugging Face, npm, PyPI, and private-key blocks, plus label-based generic token/secret detection.
 
-By default, keyleaks scans both user prompts and assistant responses. Key values are redacted unless `--show-values` is passed.
+By default, keyleaks scans both user prompts and assistant responses. Key values are redacted in terminal output; `--show-values` works only with `details` or `types`, writes raw values to `.keyleaks/` by default, and prints its file link.
 
 ## Install
 
@@ -71,10 +71,11 @@ keyleaks details --agent pi
 keyleaks details --type anthropic
 ```
 
-To show raw key values:
+To export raw key values to JSON and get a file link. By default this writes into `.keyleaks/`, which contains a `.gitignore` to avoid accidental commits:
 
 ```bash
 keyleaks details --show-values
+keyleaks details --show-values --output ./keyleaks-details.json
 ```
 
 ### Key-type counts
@@ -82,6 +83,7 @@ keyleaks details --show-values
 ```bash
 keyleaks types
 keyleaks types --show-values
+keyleaks types --show-values --output ./keyleaks-types.json
 keyleaks types --agent opencode
 ```
 
@@ -91,7 +93,7 @@ keyleaks types --agent opencode
 keyleaks --json
 keyleaks --json --inventory
 keyleaks details --json
-keyleaks details --json --show-values
+keyleaks details --show-values
 keyleaks details --json --events
 ```
 
@@ -107,7 +109,9 @@ keyleaks details --json --events
 
 ## Safety
 
-- No key values are printed unless `--show-values` is passed.
+- Raw key values are not printed to the terminal; `--show-values` writes them to a JSON file and prints the file link.
+- Default raw-value exports go into `.keyleaks/`, which keyleaks creates with a `.gitignore`.
+- `--show-values` refuses to overwrite existing files. Pick a new `--output` path or delete the old file first.
 - The package scans local history files only.
 - It uses heuristic detection and is tuned to avoid code/docs/tool-result false positives.
 

@@ -76,7 +76,7 @@ keyleaks --role user
 keyleaks --role assistant
 ```
 
-The summary renders the total key leaks line and summary table.
+The summary renders the total key leaks line and summary table. `Messages Scanned` is every scanned chat message; `Leak Messages` is the subset containing one or more detected key leaks.
 
 ### Month-wise breakup
 

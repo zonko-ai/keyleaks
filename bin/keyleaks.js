@@ -305,7 +305,12 @@ function activeReportKeys(report) {
   );
 }
 
+function scannedReportKeys(report) {
+  return reportKeys(report).filter((key) => (report[key]?.records_scanned || 0) > 0);
+}
+
 function totalKeyLeaks(report) {
+  if (Number.isFinite(report.credential_occurrences)) return report.credential_occurrences;
   return activeReportKeys(report).reduce(
     (sum, key) => sum + (report[key]?.credential_occurrences || 0),
     0,
@@ -320,22 +325,24 @@ function printTotalKeyLeaks(report) {
   );
 }
 
-function totalSummaryRow(rows) {
+function totalSummaryRow(rows, report) {
   return {
     separatorBefore: true,
     Agent: bold("Total"),
-    Messages: rows.reduce((sum, row) => sum + row.Messages, 0),
-    "Key Leaks": rows.reduce((sum, row) => sum + row["Key Leaks"], 0),
-    "Distinct Leaks": rows.reduce((sum, row) => sum + row["Distinct Leaks"], 0),
+    "Messages Scanned": report.records_scanned ?? rows.reduce((sum, row) => sum + row["Messages Scanned"], 0),
+    "Leak Messages": report.messages_with_credentials ?? rows.reduce((sum, row) => sum + row["Leak Messages"], 0),
+    "Key Leaks": report.credential_occurrences ?? rows.reduce((sum, row) => sum + row["Key Leaks"], 0),
+    "Distinct Leaks": report.distinct_credential_values ?? rows.reduce((sum, row) => sum + row["Distinct Leaks"], 0),
   };
 }
 
 function printSummaryTable(report) {
-  const rows = activeReportKeys(report).map((key) => {
+  const rows = scannedReportKeys(report).map((key) => {
     const data = report[key];
     return {
       Agent: agentColor(displayLabels[key] || toolLabels[key]),
-      Messages: data.messages_with_credentials,
+      "Messages Scanned": data.records_scanned,
+      "Leak Messages": data.messages_with_credentials,
       "Key Leaks": data.credential_occurrences,
       "Distinct Leaks": data.distinct_credential_values,
     };
@@ -348,20 +355,23 @@ function printSummaryTable(report) {
   }
   console.log(`\n${cyan("SUMMARY")}`);
   console.log(rule());
-  const displayRows = [...rows, totalSummaryRow(rows)].map((row) => ({
+  const displayRows = [...rows, totalSummaryRow(rows, report)].map((row) => ({
     ...row,
-    Messages: severityColor(row.Messages),
+    "Messages Scanned": severityColor(row["Messages Scanned"]),
+    "Leak Messages": severityColor(row["Leak Messages"]),
     "Key Leaks": severityColor(row["Key Leaks"]),
     "Distinct Leaks": severityColor(row["Distinct Leaks"]),
   }));
   console.log(
     table(displayRows, [
       { key: "Agent", header: "Agent" },
-      { key: "Messages", header: "Messages" },
+      { key: "Messages Scanned", header: "Messages Scanned" },
+      { key: "Leak Messages", header: "Leak Messages" },
       { key: "Key Leaks", header: "Key Leaks" },
       { key: "Distinct Leaks", header: "Distinct Leaks" },
     ]),
   );
+  console.log(dim("Distinct Leaks total is deduplicated across agents."));
 }
 
 function stackedBar(user, assistant, maxTotal) {
@@ -438,15 +448,15 @@ function printCommandHints() {
     table(
       [
         {
-          Command: redBold("keyleaks month-wise-breakup"),
+          Command: redBold("npx keyleaks month-wise-breakup"),
           Purpose: "Show per-agent month-wise leak charts",
         },
         {
-          Command: yellow("keyleaks details --show-values"),
+          Command: yellow("npx keyleaks details --show-values"),
           Purpose: "Write raw key details JSON and print file link",
         },
         {
-          Command: cyan("keyleaks types"),
+          Command: cyan("npx keyleaks types"),
           Purpose: "Group key leaks by inferred key type",
         },
       ],

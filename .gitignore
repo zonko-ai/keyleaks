@@ -1,0 +1,9 @@
+# Security scan and sensitive local outputs
+.deepsec/data/
+.deepsec/**/reports/
+security-reports/
+deepsec-reports/
+*.sarif
+
+# keyleaks raw-value exports
+.keyleaks/

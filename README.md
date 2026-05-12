@@ -12,7 +12,7 @@ Supported agents:
 - Cline / Roo Cline
 - Zed
 
-Named key detectors include OpenAI/OpenRouter, Anthropic, GitHub, Google/Gemini, Slack, Square, Shopify, Stripe, Linear, AWS, JWT, Hugging Face, npm, PyPI, and private-key blocks, plus label-based generic token/secret detection.
+Named key detectors include OpenAI/OpenRouter, Anthropic, OpenRouter, xAI, Groq, Perplexity, GitHub, GitLab, Google/Gemini, Slack, SendGrid, Telegram, Sentry, Square, Shopify, Stripe, Linear, AWS, JWT, Hugging Face, npm, PyPI, and private-key blocks, plus label-based generic token/secret detection.
 
 By default, keyleaks scans both user prompts and assistant responses. Key values are redacted in terminal output; `--show-values` works only with `details` or `types`, writes raw values to `.keyleaks/` by default, and prints its file link.
 
@@ -41,7 +41,7 @@ npx keyleaks
 Local development:
 
 ```bash
-cd /Users/sahanp/chat-secret-audit
+cd /Users/sahanp/keyleaks
 npm link
 keyleaks
 ```

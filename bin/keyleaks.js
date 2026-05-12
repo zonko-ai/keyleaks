@@ -23,14 +23,26 @@ const agentKeys = Object.fromEntries(
   Object.entries(toolLabels).map(([key, label]) => [label, key]),
 );
 const agentList = Object.values(toolLabels).join("|");
-const RULE = "─".repeat(72);
 const BAR_WIDTH = 34;
+const FORCE_COLOR = ["1", "true", "always"].includes(
+  String(process.env.KEYLEAKS_FORCE_COLOR || process.env.FORCE_COLOR || "")
+    .toLowerCase()
+    .trim(),
+);
 const USE_COLOR =
-  Boolean(process.stdout.isTTY) &&
   !process.env.NO_COLOR &&
-  process.env.TERM !== "dumb";
-const BLUE = USE_COLOR ? "\x1b[34m" : "";
+  (FORCE_COLOR ||
+    (Boolean(process.stdout.isTTY) && process.env.TERM !== "dumb"));
+const BOLD = USE_COLOR ? "\x1b[1m" : "";
+const DIM = USE_COLOR ? "\x1b[2m" : "";
+const CYAN = USE_COLOR ? "\x1b[36m" : "";
+const MAGENTA = USE_COLOR ? "\x1b[35m" : "";
+const GREEN = USE_COLOR ? "\x1b[32m" : "";
+const YELLOW = USE_COLOR ? "\x1b[33m" : "";
+const AMBER = USE_COLOR ? "\x1b[38;5;208m" : "";
+const LIGHT_RED = USE_COLOR ? "\x1b[38;5;203m" : "";
 const RED_BOLD = USE_COLOR ? "\x1b[1;31m" : "";
+const GRAY = USE_COLOR ? "\x1b[90m" : "";
 const RESET = USE_COLOR ? "\x1b[0m" : "";
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 const SCAN_LOADER_MESSAGES = [
@@ -44,6 +56,83 @@ function blue(value) {
 
 function redBold(value) {
   return `${RED_BOLD}${value}${RESET}`;
+}
+
+function lightRed(value) {
+  return `${RED_BOLD}${value}${RESET}`;
+}
+
+function cyan(value) {
+  return `${CYAN}${value}${RESET}`;
+}
+
+function green(value) {
+  return `${GREEN}${value}${RESET}`;
+}
+
+function amber(value) {
+  return `${AMBER}${value}${RESET}`;
+}
+
+function yellow(value) {
+  return `${YELLOW}${value}${RESET}`;
+}
+
+function magenta(value) {
+  return `${MAGENTA}${value}${RESET}`;
+}
+
+function gray(value) {
+  return `${GRAY}${value}${RESET}`;
+}
+
+function bold(value) {
+  return `${BOLD}${value}${RESET}`;
+}
+
+function dim(value) {
+  return `${DIM}${value}${RESET}`;
+}
+
+function rule(width = 72) {
+  return dim("─".repeat(width));
+}
+
+function tableHeader(value) {
+  return bold(cyan(value));
+}
+
+function agentColor(agentLabel) {
+  const colors = [blue, cyan, magenta, green, amber, yellow];
+  let sum = 0;
+  for (const char of String(agentLabel)) sum += char.charCodeAt(0);
+  return colors[sum % colors.length](agentLabel);
+}
+
+function severityColor(value) {
+  return lightRed(value);
+}
+
+function roleColor(role) {
+  if (role === "user") return cyan(role);
+  if (role === "assistant") return magenta(role);
+  return role;
+}
+
+function keyTypeColor(keyType) {
+  const value = String(keyType || "");
+  if (/private|secret|password|token|key/i.test(value)) return redBold(value);
+  if (/aws|github|gitlab|stripe|slack|npm|pypi/i.test(value))
+    return amber(value);
+  if (/openai|anthropic|gemini|openrouter|xai|groq|perplexity/i.test(value))
+    return magenta(value);
+  return yellow(value);
+}
+
+function redactColor(value) {
+  return String(value || "").includes("REDACTED")
+    ? gray(value)
+    : redBold(value);
 }
 
 function visibleLength(value) {
@@ -189,9 +278,9 @@ function table(rows, columns) {
     ),
   );
   const line = columns
-    .map((col, i) => padVisible(col.header, widths[i]))
+    .map((col, i) => padVisible(tableHeader(col.header), widths[i]))
     .join("  ");
-  const divider = widths.map((width) => "─".repeat(width)).join("  ");
+  const divider = dim(widths.map((width) => "─".repeat(width)).join("  "));
   const body = rows.flatMap((row) => {
     const rendered = columns
       .map((col, i) => padVisible(row[col.key], widths[i]))
@@ -202,9 +291,11 @@ function table(rows, columns) {
 }
 
 function printHeader() {
-  console.log(RULE);
-  console.log("KEYLEAKS — Credential Leak Report");
-  console.log(RULE);
+  console.log(rule());
+  console.log(
+    `${redBold("KEYLEAKS")} ${gray("—")} ${bold("Credential Leak Report")}`,
+  );
+  console.log(rule());
 }
 
 function activeReportKeys(report) {
@@ -222,14 +313,16 @@ function totalKeyLeaks(report) {
 
 function printTotalKeyLeaks(report) {
   console.log(
-    `\n${redBold(`Total Key Leaks to Agents: ${totalKeyLeaks(report)}`)}`,
+    `\n${redBold("Total Key Leaks to Agents:")} ${severityColor(
+      totalKeyLeaks(report),
+    )}`,
   );
 }
 
 function totalSummaryRow(rows) {
   return {
     separatorBefore: true,
-    Agent: blue("Total"),
+    Agent: bold("Total"),
     Messages: rows.reduce((sum, row) => sum + row.Messages, 0),
     "Key Leaks": rows.reduce((sum, row) => sum + row["Key Leaks"], 0),
     "Distinct Leaks": rows.reduce((sum, row) => sum + row["Distinct Leaks"], 0),
@@ -240,30 +333,33 @@ function printSummaryTable(report) {
   const rows = activeReportKeys(report).map((key) => {
     const data = report[key];
     return {
-      Agent: blue(displayLabels[key] || toolLabels[key]),
+      Agent: agentColor(displayLabels[key] || toolLabels[key]),
       Messages: data.messages_with_credentials,
       "Key Leaks": data.credential_occurrences,
       "Distinct Leaks": data.distinct_credential_values,
     };
   });
   if (!rows.length) {
-    console.log("\n🔐 SUMMARY");
-    console.log(RULE);
-    console.log("(no credential leaks found)");
+    console.log(`\n${cyan("SUMMARY")}`);
+    console.log(rule());
+    console.log(green("(no credential leaks found)"));
     return;
   }
-  console.log("\n🔐 SUMMARY");
-  console.log(RULE);
+  console.log(`\n${cyan("SUMMARY")}`);
+  console.log(rule());
+  const displayRows = [...rows, totalSummaryRow(rows)].map((row) => ({
+    ...row,
+    Messages: severityColor(row.Messages),
+    "Key Leaks": severityColor(row["Key Leaks"]),
+    "Distinct Leaks": severityColor(row["Distinct Leaks"]),
+  }));
   console.log(
-    table(
-      [...rows, totalSummaryRow(rows)],
-      [
-        { key: "Agent", header: "Agent" },
-        { key: "Messages", header: "Messages" },
-        { key: "Key Leaks", header: "Key Leaks" },
-        { key: "Distinct Leaks", header: "Distinct Leaks" },
-      ],
-    ),
+    table(displayRows, [
+      { key: "Agent", header: "Agent" },
+      { key: "Messages", header: "Messages" },
+      { key: "Key Leaks", header: "Key Leaks" },
+      { key: "Distinct Leaks", header: "Distinct Leaks" },
+    ]),
   );
 }
 
@@ -276,10 +372,9 @@ function stackedBar(user, assistant, maxTotal) {
   let assistantWidth = width - userWidth;
   if (user > 0 && userWidth === 0) userWidth = 1;
   if (assistant > 0 && assistantWidth === 0) assistantWidth = 1;
-  return `${"█".repeat(userWidth)}${"░".repeat(assistantWidth)}`.padEnd(
-    BAR_WIDTH,
-    " ",
-  );
+  return `${cyan("█".repeat(userWidth))}${magenta(
+    "░".repeat(assistantWidth),
+  )}${" ".repeat(Math.max(0, BAR_WIDTH - width))}`;
 }
 
 function monthlyRowsFor(data) {
@@ -293,34 +388,34 @@ function monthlyRowsFor(data) {
 }
 
 function printAgentMonthlyGraphs(report) {
-  console.log("\n📊 CREDENTIAL LEAKS BY MONTH");
-  console.log(RULE);
-  console.log("Legend: █ user  ░ assistant");
+  console.log(`\n${cyan("CREDENTIAL LEAKS BY MONTH")}`);
+  console.log(rule());
+  console.log(`Legend: ${cyan("█ user")}  ${magenta("░ assistant")}`);
 
   for (const key of activeReportKeys(report)) {
     const data = report[key];
     const rows = monthlyRowsFor(data);
     console.log(
-      `\n${blue((displayLabels[key] || toolLabels[key]).toUpperCase())}`,
+      `\n${agentColor((displayLabels[key] || toolLabels[key]).toUpperCase())}`,
     );
-    console.log("─".repeat(48));
+    console.log(rule(48));
     if (!rows.length) continue;
     const maxTotal = Math.max(...rows.map((row) => row.total));
     const rendered = rows.map((row) => ({
       Month: row.month,
-      User: row.user,
-      Assistant: row.assistant,
-      Total: row.total,
+      User: severityColor(row.user),
+      Assistant: severityColor(row.assistant),
+      Total: severityColor(row.total),
       Bar: stackedBar(row.user, row.assistant, maxTotal),
     }));
     const totalUser = rows.reduce((sum, row) => sum + row.user, 0);
     const totalAssistant = rows.reduce((sum, row) => sum + row.assistant, 0);
     rendered.push({
       separatorBefore: true,
-      Month: "Total",
-      User: totalUser,
-      Assistant: totalAssistant,
-      Total: totalUser + totalAssistant,
+      Month: bold("Total"),
+      User: severityColor(totalUser),
+      Assistant: severityColor(totalAssistant),
+      Total: severityColor(totalUser + totalAssistant),
       Bar: stackedBar(totalUser, totalAssistant, totalUser + totalAssistant),
     });
     console.log(
@@ -336,21 +431,21 @@ function printAgentMonthlyGraphs(report) {
 }
 
 function printCommandHints() {
-  console.log("\n▶ COMMANDS");
-  console.log(RULE);
+  console.log(`\n${cyan("COMMANDS")}`);
+  console.log(rule());
   console.log(
     table(
       [
         {
-          Command: "keyleaks month-wise-breakup",
+          Command: redBold("keyleaks month-wise-breakup"),
           Purpose: "Show per-agent month-wise leak charts",
         },
         {
-          Command: "keyleaks details --show-values",
+          Command: yellow("keyleaks details --show-values"),
           Purpose: "Write raw key details JSON and print file link",
         },
         {
-          Command: "keyleaks types",
+          Command: cyan("keyleaks types"),
           Purpose: "Group key leaks by inferred key type",
         },
       ],
@@ -365,13 +460,13 @@ function printCommandHints() {
 function detailTableRows(report, args, { color = true } = {}) {
   return applyFilters(detailRows(report), args).map((row) => ({
     agent: color
-      ? blue(displayAgent(row.coding_agent))
+      ? agentColor(displayAgent(row.coding_agent))
       : displayAgent(row.coding_agent),
     agent_id: row.coding_agent,
-    role: row.role,
+    role: color ? roleColor(row.role) : row.role,
     date: row.date || "unknown",
-    key_type: row.key_type,
-    key_value: row.key_value,
+    key_type: color ? keyTypeColor(row.key_type) : row.key_type,
+    key_value: color ? redactColor(row.key_value) : row.key_value,
     detector: row.detector,
     source: row.source,
     loc: row.loc,
@@ -390,10 +485,10 @@ function printDetails(report, args) {
         ...rows,
         {
           separatorBefore: true,
-          agent: blue("Total"),
+          agent: bold("Total"),
           role: "",
           date: "",
-          key_type: `${rows.length} Key Leaks`,
+          key_type: `${severityColor(rows.length)} ${redBold("Key Leaks")}`,
           key_value: "",
         },
       ],
@@ -432,7 +527,7 @@ function typeRows(report, args, { includeValues = false, color = true } = {}) {
       const [agent, key_type] = key.split("\t");
       const agentLabel = displayAgent(agent);
       const row = {
-        agent: color ? blue(agentLabel) : agentLabel,
+        agent: color ? agentColor(agentLabel) : agentLabel,
         agent_id: agent,
         agent_sort: agentLabel,
         key_type,
@@ -465,13 +560,23 @@ function printTypes(report, args) {
   }
   tableRows.push({
     separatorBefore: true,
-    agent: blue("Total"),
+    agent: bold("Total"),
     key_type: "All Types",
     count: tableRows.reduce((sum, row) => sum + row.count, 0),
     user: tableRows.reduce((sum, row) => sum + row.user, 0),
     assistant: tableRows.reduce((sum, row) => sum + row.assistant, 0),
     values: includeValues ? "" : undefined,
   });
+  const displayRows = tableRows.map((row) => ({
+    ...row,
+    key_type:
+      row.key_type === "All Types"
+        ? bold(row.key_type)
+        : keyTypeColor(row.key_type),
+    count: severityColor(row.count),
+    user: severityColor(row.user),
+    assistant: severityColor(row.assistant),
+  }));
   const columns = [
     { key: "agent", header: "Coding Agent" },
     { key: "key_type", header: "Key Type" },
@@ -480,7 +585,7 @@ function printTypes(report, args) {
     { key: "assistant", header: "Assistant" },
   ];
   if (includeValues) columns.push({ key: "values", header: "Values" });
-  console.log(table(tableRows, columns));
+  console.log(table(displayRows, columns));
 }
 
 function safeTimestamp() {
@@ -570,7 +675,11 @@ const parallel = !args.includes("--sequential");
 const needsDetails = ["details", "types"].includes(command);
 const requestedRole = parseFlagValue(args, "--role") || "all";
 
-if (!["summary", "list", "month-wise-breakup", "details", "types"].includes(command)) {
+if (
+  !["summary", "list", "month-wise-breakup", "details", "types"].includes(
+    command,
+  )
+) {
   console.error(`Unknown command: ${command}`);
   printHelp();
   process.exit(2);

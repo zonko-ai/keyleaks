@@ -22,6 +22,10 @@ const USE_COLOR = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR && proc
 const BLUE = USE_COLOR ? '\x1b[34m' : '';
 const RESET = USE_COLOR ? '\x1b[0m' : '';
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
+const SCAN_LOADER_LINES = [
+  'agents access keys through envs...',
+  'scanning user and assistant responses...',
+];
 
 function blue(value) {
   return `${BLUE}${value}${RESET}`;
@@ -64,6 +68,34 @@ Options:
 Safety:
   key values are redacted by default. Use --show-values only when your terminal
   output is private.`);
+}
+
+function useScanLoader({ json }) {
+  return !json && (Boolean(process.stderr.isTTY) || process.env.KEYLEAKS_FORCE_LOADER === '1');
+}
+
+function startScanLoader(options) {
+  if (!useScanLoader(options)) return () => {};
+
+  let frame = 0;
+  let rendered = false;
+  const render = () => {
+    const cursor = frame % 2 === 0 ? '|' : ' ';
+    const block = `${SCAN_LOADER_LINES[0]}\n${SCAN_LOADER_LINES[1]} ${cursor}`;
+    if (rendered) process.stderr.write('\x1b[2F');
+    process.stderr.write(`${block}\x1b[0J`);
+    rendered = true;
+    frame++;
+  };
+
+  render();
+  const timer = setInterval(render, 450);
+  timer.unref?.();
+
+  return () => {
+    clearInterval(timer);
+    if (rendered) process.stderr.write('\x1b[2F\x1b[0J');
+  };
 }
 
 function reportKeys(report) {
@@ -391,15 +423,21 @@ if (!['all', ...DEFAULT_ROLES].includes(requestedRole)) {
 const agents = agent ? [agentKeys[agent]] : ALL_AGENT_KEYS;
 const roles = requestedRole === 'all' ? DEFAULT_ROLES : [requestedRole];
 
-const report = await buildReport({
-  includeEvents: events,
-  includeDetails: needsDetails,
-  includeInventory: inventory,
-  showValues,
-  parallel,
-  agents,
-  roles,
-});
+const stopScanLoader = startScanLoader({ json });
+let report;
+try {
+  report = await buildReport({
+    includeEvents: events,
+    includeDetails: needsDetails,
+    includeInventory: inventory,
+    showValues,
+    parallel,
+    agents,
+    roles,
+  });
+} finally {
+  stopScanLoader();
+}
 const filters = {
   agent: agent || 'all',
   type: parseFlagValue(args, '--type') || 'all',

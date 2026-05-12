@@ -32,6 +32,8 @@ keyleaks types --show-values
 keyleaks --agent codex
 ```
 
+Keyleaks scans both user prompts and assistant responses to detect keys exposed to your agents, whether shared directly or via environment variables.
+
 Without installing globally:
 
 ```bash

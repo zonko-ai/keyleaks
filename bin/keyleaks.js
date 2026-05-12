@@ -33,6 +33,7 @@ const USE_COLOR =
   !process.env.NO_COLOR &&
   (FORCE_COLOR ||
     (Boolean(process.stdout.isTTY) && process.env.TERM !== "dumb"));
+const BLUE = USE_COLOR ? "\x1b[34m" : "";
 const BOLD = USE_COLOR ? "\x1b[1m" : "";
 const DIM = USE_COLOR ? "\x1b[2m" : "";
 const CYAN = USE_COLOR ? "\x1b[36m" : "";

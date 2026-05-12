@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 const rows = [
-  ['keyleaks', 'Show summary and per-agent monthly leak charts'],
-  ['keyleaks details', 'Show the redacted key details table'],
+  ['keyleaks', 'Show summary table'],
+  ['keyleaks month-wise-breakup', 'Show per-agent month-wise leak charts'],
+  ['keyleaks details --show-values', 'Write raw key details JSON and print file link'],
   ['keyleaks types', 'Group key leaks by inferred key type'],
-  ['keyleaks types --show-values', 'Write grouped key values JSON and print file link'],
-  ['keyleaks --agent codex', 'Scan one agent faster'],
 ];
 const widths = [
   Math.max('Command'.length, ...rows.map((row) => row[0].length)),

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { detectText } from './lib/native-audit.js';
 
 const cases = [
-  ['OpenAI', 'openai api key = sk-' + 'A'.repeat(48), 'OpenAI/OpenRouter'],
+  ['OpenAI project', 'openai api key = sk-proj-' + 'A'.repeat(48), 'OpenAI'],
+  ['OpenAI compatible', 'api key = sk-' + 'A'.repeat(48), 'OpenAI-compatible'],
   ['Anthropic', 'anthropic api key = sk-ant-api03-' + 'A'.repeat(80), 'Anthropic'],
   ['OpenRouter', 'openrouter api key = sk-or-v1-' + 'A'.repeat(48), 'OpenRouter'],
   ['xAI', 'xai api key = xai-' + 'A'.repeat(48), 'xAI'],

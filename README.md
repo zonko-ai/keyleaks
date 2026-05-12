@@ -12,7 +12,7 @@ Supported agents:
 - Cline / Roo Cline
 - Zed
 
-Named key detectors include OpenAI/OpenRouter, Anthropic, OpenRouter, xAI, Groq, Perplexity, GitHub, GitLab, Google/Gemini, Slack, SendGrid, Telegram, Sentry, Square, Shopify, Stripe, Linear, AWS, JWT, Hugging Face, npm, PyPI, and private-key blocks, plus label-based generic token/secret detection.
+Named key detectors include OpenAI, OpenAI-compatible, Anthropic, OpenRouter, xAI, Groq, Perplexity, GitHub, GitLab, Google/Gemini, Slack, SendGrid, Telegram, Sentry, Square, Shopify, Stripe, Linear, AWS, JWT, Hugging Face, npm, PyPI, and private-key blocks, plus label-based generic token/secret detection.
 
 By default, keyleaks scans both user prompts and assistant responses. Key values are redacted in terminal output; `--show-values` works only with `details` or `types`, writes raw values to `.keyleaks/` by default, and prints its file link.
 
@@ -50,7 +50,7 @@ keyleaks
 
 ## Commands
 
-### Summary and charts
+### Summary
 
 ```bash
 keyleaks
@@ -61,7 +61,17 @@ keyleaks --role user
 keyleaks --role assistant
 ```
 
-The summary renders as tables and per-agent month-wise leak charts.
+The summary renders the total key leaks line and summary table.
+
+### Month-wise breakup
+
+```bash
+keyleaks month-wise-breakup
+keyleaks month-wise-breakup --agent pi
+keyleaks month-wise-breakup --role assistant
+```
+
+The month-wise breakup renders per-agent leak charts grouped by user and assistant.
 
 ### Key details table
 
@@ -104,7 +114,7 @@ keyleaks details --json --events
 - Native Node scanner; no Python process startup.
 - Uses `rg` when available to prefilter large JSONL histories.
 - Scans agents concurrently by default.
-- Includes clean per-agent month-wise bar charts in summary output.
+- Provides clean per-agent month-wise bar charts via `keyleaks month-wise-breakup`.
 - Use `--agent <name>` for the fastest targeted scan.
 - Use `--role user` or `--role assistant` to scan one side only.
 - Use `--sequential` to disable concurrent scanning for debugging.

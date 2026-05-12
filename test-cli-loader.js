@@ -15,8 +15,8 @@ const result = spawnSync(process.execPath, ['bin/keyleaks.js', '--agent', 'codex
 });
 
 assert.equal(result.status, 0, result.stderr || result.stdout);
-assert.match(result.stderr, /agents access keys through envs\.\.\./);
-assert.match(result.stderr, /scanning user and assistant responses\.\.\./);
+assert.match(result.stderr, /agents access keys through envs|scanning user and assistant responses/);
+assert.doesNotMatch(result.stderr, /\x1b\[2F/);
 assert.doesNotMatch(result.stdout, /agents access keys through envs/);
 assert.doesNotMatch(result.stdout, /scanning user and assistant responses/);
 

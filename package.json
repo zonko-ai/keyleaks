@@ -1,6 +1,6 @@
 {
   "name": "keyleaks",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "One-command local audit for credential-like values in coding-agent chat histories.",
   "license": "MIT",
   "type": "module",

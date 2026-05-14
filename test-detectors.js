@@ -27,4 +27,16 @@ for (const [name, text, expectedType] of cases) {
   assert(hits.some((hit) => hit.key_type === expectedType), `${name} detector should emit ${expectedType}`);
 }
 
-console.log(`detector coverage ok (${cases.length} cases)`);
+const falsePositiveCases = [
+  ['Sentry trace label', 'sentry: ' + 'a'.repeat(64)],
+  ['Gemini model label', 'gemini: gemini-2.5-pro-preview-06-05'],
+  ['xAI model label', 'xai: grok-3-mini-fast-beta'],
+  ['OAuth client id', 'client_id: ' + 'A'.repeat(40)],
+  ['App id', 'app id: ' + 'A'.repeat(20) + '12345'],
+];
+
+for (const [name, text] of falsePositiveCases) {
+  assert.equal(detectText(text).length, 0, `${name} should not be reported as a key leak`);
+}
+
+console.log(`detector coverage ok (${cases.length} positive, ${falsePositiveCases.length} negative cases)`);
